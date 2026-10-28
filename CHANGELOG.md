@@ -2,6 +2,13 @@
 
 All notable changes to this package are documented here.
 
+## v1.0.0 - 2026-10-28
+
+First stable release. Every feature has been tested against the live Gemini API: text and JSON output, image generation, multi-turn editing, reference-image editing, batches and video.
+
+- Live test suite (`vendor/bin/pest --group=live`), skipped unless `GEMINI_LIVE_API_KEY` is set
+- Before/after demo and typical costs in the README
+
 ## v0.2.0 - 2026-10-28
 
 - Multi-turn image editing with `Gemini::imageChat()`, including saving and restoring the conversation

@@ -27,7 +27,15 @@ Open a feature request first if the change is large, so we can agree on the appr
 6. If the change affects users, add it to the README and to CHANGELOG.md under "Unreleased".
 7. Open the pull request with a clear description of what changed and why.
 
-Tests use `Gemini::fake()`, so you don't need an API key to run them. If your change depends on how the real API behaves, mention in the pull request which model you tested it against.
+Tests use `Gemini::fake()`, so you don't need an API key to run them.
+
+If your change depends on how the real API behaves, also run the live tests. They use real API calls and cost about $0.70 (six images, two short text requests and one 10-second 360p video):
+
+```bash
+GEMINI_LIVE_API_KEY=your-key vendor/bin/pest --group=live
+```
+
+Generated files and a cost log are written to `build/live`. Mention in the pull request which models you tested against.
 
 ## Versioning
 

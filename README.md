@@ -16,6 +16,19 @@ Gemini::image('A cozy cabin in snowy mountains at sunset')
     ->store('images'); // images/Xy3...png
 ```
 
+Refine an image over several turns, and Gemini keeps the same scene:
+
+```php
+$chat = Gemini::imageChat()->aspectRatio('1:1');
+
+$chat->send('A small red barn in a green field under a blue sky, photorealistic');
+$chat->send('Cover everything in deep snow and make it a winter evening. Keep the same barn and composition.');
+```
+
+| Turn 1 | Turn 2 |
+| --- | --- |
+| ![A red barn in a green summer field](https://raw.githubusercontent.com/anmolmishra23-dev/laravel-gemini/main/art/barn-before.jpg) | ![The same barn and fence covered in snow on a winter evening](https://raw.githubusercontent.com/anmolmishra23-dev/laravel-gemini/main/art/barn-after.jpg) |
+
 - **Images:** generate, edit with reference images, and refine over several turns
 - **Batches:** generate a whole product catalog concurrently, or on the queue
 - **Queues:** generate in the background, with events when the image or video is ready
@@ -333,7 +346,16 @@ Prices live in the `pricing` section of `config/gemini.php`, in USD per million 
 ],
 ```
 
-Costs are estimates for the standard paid tier. Video cost isn't tracked yet.
+Costs are estimates for the standard paid tier. Video cost isn't tracked yet. As a guide, Gemini Omni costs about $0.10 per second at 720p and a third of that at 360p.
+
+Typical costs from a real test run (October 2026):
+
+| Request | Model | Cost |
+| --- | --- | --- |
+| 1 image (1K) | `gemini-3.1-flash-image` | ~$0.068 |
+| 1 image edited from a reference | `gemini-nano-banana-2.1` | ~$0.044 |
+| 1 image (1K) | `gemini-3.1-flash-lite-image` | ~$0.034 |
+| 10-second video, 360p | `gemini-omni-1.1-flash` | ~$0.34 |
 
 ## Advanced
 
