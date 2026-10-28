@@ -12,10 +12,11 @@ abstract class GeminiResponse
         public readonly ?string $finishReason,
         public readonly Usage $usage,
         public readonly array $raw,
+        public readonly ?string $model = null,
         protected array $images = [],
     ) {}
 
-    public static function fromArray(array $data): static
+    public static function fromArray(array $data, ?string $model = null): static
     {
         $text = null;
         $images = [];
@@ -38,7 +39,17 @@ abstract class GeminiResponse
             finishReason: data_get($data, 'candidates.0.finishReason'),
             usage: Usage::fromArray($data['usageMetadata'] ?? []),
             raw: $data,
+            model: $model ?? $data['modelVersion'] ?? null,
             images: $images,
         );
+    }
+
+    /**
+     * Estimated cost in USD, from the token usage and config('gemini.pricing').
+     * Null when the model has no configured price.
+     */
+    public function cost(): ?float
+    {
+        return $this->model === null ? null : $this->usage->cost($this->model);
     }
 }

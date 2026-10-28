@@ -1,7 +1,17 @@
 {
     "name": "anmolmishra23-dev/laravel-gemini",
-    "description": "Unofficial Laravel SDK for Google Gemini: image generation, image editing and text generation with a fluent API and built-in test fakes.",
-    "keywords": ["laravel", "gemini", "google-gemini", "ai", "image-generation", "nano-banana", "llm"],
+    "description": "Unofficial Laravel SDK for Google Gemini: image generation and editing, multi-turn edits, batch and queued generation, video and text, with cost tracking and test fakes.",
+    "keywords": [
+        "laravel",
+        "gemini",
+        "google-gemini",
+        "ai",
+        "image-generation",
+        "nano-banana",
+        "llm",
+        "video-generation",
+        "gemini-omni"
+    ],
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -13,10 +23,7 @@
         "php": "^8.2",
         "ext-fileinfo": "*",
         "guzzlehttp/guzzle": "^7.8",
-        "illuminate/console": "^12.0|^13.0",
-        "illuminate/filesystem": "^12.0|^13.0",
-        "illuminate/http": "^12.0|^13.0",
-        "illuminate/support": "^12.0|^13.0"
+        "laravel/framework": "^12.0|^13.0"
     },
     "require-dev": {
         "laravel/pint": "^1.18",

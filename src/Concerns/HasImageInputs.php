@@ -12,7 +12,8 @@ use SplFileInfo;
 trait HasImageInputs
 {
     /**
-     * Image parts sent before the prompt text.
+     * Attached images. Disk and URL images are only read when the request is
+     * sent, so queued requests stay small.
      */
     protected array $images = [];
 
@@ -35,25 +36,19 @@ trait HasImageInputs
      */
     public function withImageFromDisk(string $path, ?string $disk = null): static
     {
-        $storage = Storage::disk($disk);
+        $this->images[] = ['source' => 'disk', 'path' => $path, 'disk' => $disk];
 
-        if (! $storage->exists($path)) {
-            throw new InvalidArgumentException("Image [{$path}] does not exist on the disk.");
-        }
-
-        return $this->withImageData($storage->get($path), $storage->mimeType($path) ?: null);
+        return $this;
     }
 
     /**
-     * Download an image from a URL and attach it.
+     * Attach an image from a URL.
      */
     public function withImageUrl(string $url): static
     {
-        $response = Http::timeout(30)->get($url)->throw();
+        $this->images[] = ['source' => 'url', 'url' => $url];
 
-        $mimeType = Str::before($response->header('Content-Type'), ';') ?: null;
-
-        return $this->withImageData($response->body(), $mimeType);
+        return $this;
     }
 
     /**
@@ -62,13 +57,47 @@ trait HasImageInputs
     public function withImageData(string $bytes, ?string $mimeType = null): static
     {
         $this->images[] = [
-            'inlineData' => [
-                'mimeType' => $mimeType ?? $this->detectMimeType($bytes),
-                'data' => base64_encode($bytes),
-            ],
+            'source' => 'data',
+            'data' => base64_encode($bytes),
+            'mimeType' => $mimeType ?? $this->detectMimeType($bytes),
         ];
 
         return $this;
+    }
+
+    /**
+     * Load every attached image.
+     *
+     * @return array<int, array{data: string, mimeType: string}>
+     */
+    protected function resolveImages(): array
+    {
+        return array_map(fn (array $image) => match ($image['source']) {
+            'disk' => $this->loadFromDisk($image['path'], $image['disk']),
+            'url' => $this->loadFromUrl($image['url']),
+            default => $image,
+        }, $this->images);
+    }
+
+    protected function loadFromDisk(string $path, ?string $disk): array
+    {
+        $storage = Storage::disk($disk);
+
+        if (! $storage->exists($path)) {
+            throw new InvalidArgumentException("Image [{$path}] does not exist on the disk.");
+        }
+
+        $bytes = $storage->get($path);
+
+        return ['data' => base64_encode($bytes), 'mimeType' => $storage->mimeType($path) ?: $this->detectMimeType($bytes)];
+    }
+
+    protected function loadFromUrl(string $url): array
+    {
+        $response = Http::timeout(30)->get($url)->throw();
+        $mimeType = Str::before($response->header('Content-Type'), ';');
+
+        return ['data' => base64_encode($response->body()), 'mimeType' => $mimeType ?: $this->detectMimeType($response->body())];
     }
 
     protected function detectMimeType(string $bytes): string

@@ -3,7 +3,9 @@
 namespace AnmolMishra\Gemini\Requests;
 
 use AnmolMishra\Gemini\Exceptions\GeminiException;
+use AnmolMishra\Gemini\Jobs\GenerateMedia;
 use AnmolMishra\Gemini\Responses\ImageResponse;
+use Illuminate\Foundation\Bus\PendingDispatch;
 
 class ImageRequest extends GenerationRequest
 {
@@ -48,7 +50,23 @@ class ImageRequest extends GenerationRequest
      */
     public function generate(): ImageResponse
     {
-        $response = ImageResponse::fromArray($this->send());
+        return $this->toResponse($this->call());
+    }
+
+    /**
+     * Generate on the queue, store the image in the directory and fire ImageGenerated.
+     */
+    public function queue(string $directory = 'gemini', ?string $disk = null, array $meta = []): PendingDispatch
+    {
+        return GenerateMedia::dispatch($this, $directory, $disk, $meta);
+    }
+
+    /**
+     * @throws GeminiException when the response contains no image
+     */
+    public function toResponse(array $data): ImageResponse
+    {
+        $response = ImageResponse::fromArray($data, $this->model);
 
         if ($response->images() === []) {
             throw GeminiException::noImageReturned($response->finishReason, $response->text);

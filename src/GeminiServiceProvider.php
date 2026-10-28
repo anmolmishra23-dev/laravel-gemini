@@ -3,6 +3,7 @@
 namespace AnmolMishra\Gemini;
 
 use AnmolMishra\Gemini\Console\GenerateImageCommand;
+use AnmolMishra\Gemini\Console\GenerateVideoCommand;
 use Illuminate\Support\ServiceProvider;
 
 class GeminiServiceProvider extends ServiceProvider
@@ -28,7 +29,7 @@ class GeminiServiceProvider extends ServiceProvider
                 __DIR__.'/../config/gemini.php' => config_path('gemini.php'),
             ], 'gemini-config');
 
-            $this->commands([GenerateImageCommand::class]);
+            $this->commands([GenerateImageCommand::class, GenerateVideoCommand::class]);
         }
     }
 }

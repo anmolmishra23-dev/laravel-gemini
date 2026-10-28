@@ -5,7 +5,7 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/anmolmishra23-dev/laravel-gemini.svg)](https://packagist.org/packages/anmolmishra23-dev/laravel-gemini)
 [![License](https://img.shields.io/packagist/l/anmolmishra23-dev/laravel-gemini.svg)](LICENSE)
 
-An unofficial Laravel SDK for Google Gemini, built for **image generation and image editing** first, with text generation included.
+An unofficial Laravel SDK for Google Gemini, built for **image and video generation** first, with text generation included.
 
 ```php
 use AnmolMishra\Gemini\Facades\Gemini;
@@ -16,15 +16,33 @@ Gemini::image('A cozy cabin in snowy mountains at sunset')
     ->store('images'); // images/Xy3...png
 ```
 
-- Fluent API for image generation and editing (single or multiple reference images)
-- Save straight to any Laravel storage disk (local, S3, ...)
-- Return images directly from routes
-- Text generation, system instructions and structured JSON output
+- **Images:** generate, edit with reference images, and refine over several turns
+- **Batches:** generate a whole product catalog concurrently, or on the queue
+- **Queues:** generate in the background, with events when the image or video is ready
+- **Video:** text-to-video and image-to-video with Gemini Omni
+- **Text:** system instructions, vision and structured JSON output
+- **Cost tracking:** an estimated USD cost for every response
+- Save straight to any Laravel storage disk, or return files from routes
 - Automatic retries on 429 / 5xx, with clear exceptions
 - `Gemini::fake()` and assertions for testing your app
-- `php artisan gemini:image` for quick experiments
 
 > This package is not affiliated with or endorsed by Google.
+
+## Contents
+
+- [Installation](#installation)
+- [Image generation](#image-generation)
+- [Image editing](#image-editing-and-reference-images)
+- [Multi-turn editing](#multi-turn-editing)
+- [Batch generation](#batch-generation)
+- [Queues and events](#queues-and-events)
+- [Video generation](#video-generation)
+- [Text generation](#text-generation)
+- [Cost tracking](#cost-tracking)
+- [Error handling](#error-handling)
+- [Artisan commands](#artisan-commands)
+- [Testing your app](#testing-your-app)
+- [Configuration](#configuration)
 
 ## Requirements
 
@@ -77,6 +95,7 @@ $image->mimeType;                     // image/png
 $response->store('images');           // shortcut for ->image()->store()
 $response->images();                  // all returned images
 $response->usage->totalTokens;        // token usage
+$response->cost();                    // estimated cost in USD
 ```
 
 Return an image straight from a route:
@@ -85,7 +104,17 @@ Return an image straight from a route:
 Route::get('/cabin', fn () => Gemini::image('A cozy cabin')->generate()->image());
 ```
 
-### Image editing and reference images
+### Getting text with the image
+
+```php
+$response = Gemini::image('Design a logo for a coffee shop and explain it')
+    ->withText()
+    ->generate();
+
+$response->text;   // the model's explanation
+```
+
+## Image editing and reference images
 
 Attach one or more images. They are sent before the prompt, as Gemini recommends.
 
@@ -103,15 +132,150 @@ Gemini::image('Put this product on a marble kitchen counter')
     ->generate();
 ```
 
-### Getting text with the image
+Disk and URL images are read when the request is sent, so queued requests stay small.
+
+## Multi-turn editing
+
+Refine the same image step by step, like a conversation. Each message edits the result of the previous one.
 
 ```php
-$response = Gemini::image('Design a logo for a coffee shop and explain it')
-    ->withText()
+$chat = Gemini::imageChat()->aspectRatio('1:1');
+
+$chat->send('A cozy cabin in the mountains')->store('cabin');
+$chat->send('Add snow on the roof')->store('cabin');
+$chat->send('Make it night with warm light in the windows')->store('cabin');
+```
+
+Attach images to a message with the usual methods. They go with the next message only:
+
+```php
+$chat->withImage($request->file('logo'))->send('Paint this logo on the cabin door');
+```
+
+Continue a conversation across HTTP requests by storing its history:
+
+```php
+session(['cabin-chat' => $chat->history()]);
+
+// Later...
+Gemini::imageChat()
+    ->withHistory(session('cabin-chat'))
+    ->send('Add a chimney with smoke');
+```
+
+The history contains the generated images, so store it somewhere that can hold a few MB per conversation, such as the cache, a file or a database column.
+
+`send()` returns the response even when the model replies with text only (for example, to ask a question). Check `$response->images()`, or use `generate()` to throw when no image comes back.
+
+## Batch generation
+
+Generate many images at once. Requests run concurrently, and one failure doesn't stop the rest:
+
+```php
+$results = Gemini::batch([
+    'mug'   => 'A white coffee mug on a wooden table, studio lighting',
+    'shirt' => 'A black t-shirt on a hanger, studio lighting',
+    'hat'   => Gemini::image('A red baseball cap')->aspectRatio('1:1'),
+])->concurrency(5)->generate();
+
+$paths = $results->store('catalog', 's3');   // ['mug' => 'catalog/...png', ...]
+
+foreach ($results->failed() as $key => $exception) {
+    logger()->warning("Could not generate {$key}: {$exception->getMessage()}");
+}
+
+$results->get('mug');       // ImageResponse or GeminiException
+$results->successful();     // successful responses, keyed like the requests
+$results->totalCost();      // estimated USD for the whole batch
+```
+
+Plain strings are image prompts. You can also mix in `Gemini::text()` requests, for example to write product descriptions in the same batch. Keep `concurrency()` within your Gemini rate limits.
+
+For hundreds or thousands of images, use queued jobs with Laravel's [job batching](https://laravel.com/docs/queues#job-batching) instead:
+
+```php
+use Illuminate\Support\Facades\Bus;
+use AnmolMishra\Gemini\Jobs\GenerateMedia;
+
+Bus::batch(
+    $products->map(fn ($product) => new GenerateMedia(
+        Gemini::image("Studio photo of {$product->name}"),
+        directory: 'catalog',
+        meta: ['product_id' => $product->id],
+    ))
+)->name('Catalog images')->dispatch();
+```
+
+## Queues and events
+
+Image generation takes several seconds and video takes minutes, so you'll usually want them off the request cycle. `queue()` generates in the background, stores the result and fires an event:
+
+```php
+Gemini::image('Studio photo of a white coffee mug')
+    ->aspectRatio('1:1')
+    ->queue('products', 's3', meta: ['product_id' => $product->id]);
+```
+
+Listen for the result:
+
+```php
+use AnmolMishra\Gemini\Events\GenerationFailed;
+use AnmolMishra\Gemini\Events\ImageGenerated;
+
+Event::listen(function (ImageGenerated $event) {
+    Product::find($event->meta['product_id'])->update(['image' => $event->path]);
+
+    // Also: $event->disk, $event->model, $event->text, $event->cost
+});
+
+Event::listen(function (GenerationFailed $event) {
+    // $event->type ('image' or 'video'), $event->exception, $event->meta
+});
+```
+
+Videos work the same way and fire `VideoGenerated`.
+
+`queue()` returns Laravel's pending dispatch, so you can chain `->onQueue('ai')` or `->delay(...)`. Set a default connection and queue with `GEMINI_QUEUE_CONNECTION` and `GEMINI_QUEUE`. Jobs time out after 300 seconds for images and 900 for videos, so make sure your queue connection's `retry_after` is longer than that.
+
+The API key is never written into the queued job. The worker reads it from its own config.
+
+## Video generation
+
+Videos are generated with Gemini Omni (`gemini-omni-1.1-flash`), and audio is included.
+
+```php
+$response = Gemini::video('Slow dolly shot of a lighthouse at dusk, waves crashing, no dialogue')
+    ->aspectRatio('16:9')     // 16:9 (default) or 9:16
+    ->resolution('1080p')     // 360p, 720p (default), 1080p or 4k
     ->generate();
 
-$response->text;   // the model's explanation
+$response->store('videos');   // videos/Xy3...mp4
 ```
+
+Generation takes a few minutes, so in web apps use `->queue('videos')` instead of `generate()`.
+
+There's no separate negative-prompt or audio option. Describe what you want, and what to avoid, in the prompt.
+
+Animate an image:
+
+```php
+Gemini::video('The waves start moving and the clouds drift by')
+    ->withImageFromDisk('photos/beach.jpg', 's3')
+    ->generate()
+    ->store('videos');
+```
+
+Edit or extend a video you generated earlier, using its interaction id:
+
+```php
+$first = Gemini::video('A paper boat floating down a stream')->generate();
+
+Gemini::video('Continue: the boat drifts into a small waterfall')
+    ->after($first->id)
+    ->generate();
+```
+
+The video is returned as a file and downloaded when you first access it (`store()`, `save()`, `bytes()`). For very short videos, `->inline()` returns the bytes in the response instead.
 
 ## Text generation
 
@@ -146,6 +310,30 @@ $response = Gemini::text('Suggest 3 names for a coffee shop')
 
 $response->json();        // ['Bean There', 'Daily Grind', 'Brew Haven']
 ```
+
+## Cost tracking
+
+Every image and text response estimates its cost in USD from the token usage:
+
+```php
+$response = Gemini::image('A cozy cabin')->generate();
+
+$response->cost();               // 0.06884
+$response->usage->promptTokens;
+$response->usage->outputTokens;
+$response->usage->imageTokens;
+$response->usage->thoughtTokens;
+```
+
+Prices live in the `pricing` section of `config/gemini.php`, in USD per million tokens. They come from Google's [pricing page](https://ai.google.dev/gemini-api/docs/pricing) as of October 2026. Google changes prices, so publish the config and keep them current. `cost()` returns `null` for models without a price. Add any model like this:
+
+```php
+'pricing' => [
+    'my-model' => ['input' => 0.50, 'output' => 3.00, 'image_output' => 60.00],
+],
+```
+
+Costs are estimates for the standard paid tier. Video cost isn't tracked yet.
 
 ## Advanced
 
@@ -198,13 +386,17 @@ It is thrown when:
 
 - the API returns an error (after retries on 429 / 5xx)
 - the prompt is blocked by safety filters
-- an image request returns no image (for example `finishReason: SAFETY`)
+- an image or video request returns no image or video (for example `finishReason: SAFETY`)
+- a generated video file fails to process
 - the API key is missing
 
-## Artisan command
+In batches, failures are collected in the results instead of being thrown.
+
+## Artisan commands
 
 ```bash
 php artisan gemini:image "A cozy cabin at sunset" --aspect-ratio=16:9 --size=2K --disk=public --dir=gemini
+php artisan gemini:video "A lighthouse at dusk" --resolution=720p --image=storage/app/photo.jpg
 ```
 
 ## Testing your app
@@ -220,7 +412,8 @@ it('creates a product image', function () {
     Gemini::fake([
         FakeResponse::image(),                  // 1st call returns a 1x1 PNG
         FakeResponse::text('A nice caption'),   // 2nd call returns text
-        FakeResponse::error(429, 'Quota hit'),  // 3rd call fails
+        FakeResponse::video(),                  // 3rd call returns a fake video
+        FakeResponse::error(429, 'Quota hit'),  // 4th call fails
     ]);
 
     // ... call your code ...
@@ -233,7 +426,9 @@ it('creates a product image', function () {
 });
 ```
 
-With no responses, `Gemini::fake()` answers every request with fake text and an image. Faked requests are not retried.
+With no responses, `Gemini::fake()` answers image and text requests with fake text and an image, and video requests with a fake video. Faked requests are not retried. Also available: `assertNotSent()` and `assertNothingSent()`.
+
+To test queued generation, use `Bus::fake()` and assert `GenerateMedia` was dispatched, or run the sync queue with `Event::fake()` and assert `ImageGenerated` was fired.
 
 ## Configuration
 
@@ -243,20 +438,23 @@ With no responses, `Gemini::fake()` answers every request with fake text and an 
 | `base_url` | `GEMINI_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` |
 | `models.image` | `GEMINI_IMAGE_MODEL` | `gemini-3.1-flash-image` |
 | `models.text` | `GEMINI_TEXT_MODEL` | `gemini-3.5-flash` |
+| `models.video` | `GEMINI_VIDEO_MODEL` | `gemini-omni-1.1-flash` |
 | `timeout` | `GEMINI_TIMEOUT` | `120` seconds |
 | `retry.times` | `GEMINI_RETRY_TIMES` | `3` attempts |
 | `retry.sleep` | `GEMINI_RETRY_SLEEP` | `1000` ms |
+| `video.timeout` | `GEMINI_VIDEO_TIMEOUT` | `600` seconds |
 | `disk` | `GEMINI_DISK` | default disk |
+| `queue.connection` | `GEMINI_QUEUE_CONNECTION` | default connection |
+| `queue.name` | `GEMINI_QUEUE` | default queue |
+| `pricing` | none | see [Cost tracking](#cost-tracking) |
 
 ## Contributing
 
-```bash
-composer install
-composer test     # Pest
-composer format   # Pint
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are welcome.
 
-Pull requests are welcome. Please add tests for new features.
+## Security
+
+Please report security issues privately. See [SECURITY.md](SECURITY.md).
 
 ## License
 

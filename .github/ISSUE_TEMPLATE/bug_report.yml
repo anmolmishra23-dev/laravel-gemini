@@ -1,0 +1,47 @@
+name: Bug report
+description: Something isn't working as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting! Please never paste your Gemini API key.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: A short code sample that shows the problem.
+      render: php
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message
+      description: The full exception message, if any.
+      render: shell
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: laravel-version
+    attributes:
+      label: Laravel and PHP versions
+      placeholder: Laravel 13.2, PHP 8.4
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Gemini model
+      placeholder: gemini-3.1-flash-image

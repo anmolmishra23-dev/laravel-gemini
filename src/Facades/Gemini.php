@@ -15,7 +15,10 @@ use PHPUnit\Framework\Assert as PHPUnit;
 
 /**
  * @method static \AnmolMishra\Gemini\Requests\ImageRequest image(?string $prompt = null)
+ * @method static \AnmolMishra\Gemini\Requests\ImageChat imageChat()
  * @method static \AnmolMishra\Gemini\Requests\TextRequest text(?string $prompt = null)
+ * @method static \AnmolMishra\Gemini\Requests\VideoRequest video(?string $prompt = null)
+ * @method static \AnmolMishra\Gemini\Batch\PendingBatch batch(array $requests)
  * @method static \AnmolMishra\Gemini\GeminiClient client()
  *
  * @see GeminiService
@@ -29,7 +32,8 @@ class Gemini extends Facade
 
     /**
      * Fake Gemini API responses. Responses are returned in order; once they run
-     * out, every request gets a default response containing text and an image.
+     * out, image and text requests get FakeResponse::default() and video
+     * requests get FakeResponse::video().
      *
      * @param  array<int, array|PromiseInterface>  $responses
      */
@@ -54,9 +58,19 @@ class Gemini extends Facade
             is_array($response) ? $sequence->push($response) : $sequence->pushResponse($response);
         }
 
-        $sequence->whenEmpty(Http::response(FakeResponse::default()));
+        $baseUrl = rtrim($config->get('gemini.base_url'), '/');
 
-        Http::fake([rtrim($config->get('gemini.base_url'), '/').'/*' => $sequence]);
+        Http::fake(function (Request $request) use ($sequence, $baseUrl) {
+            if (! str_starts_with($request->url(), $baseUrl)) {
+                return null;
+            }
+
+            if (! $sequence->isEmpty()) {
+                return $sequence($request);
+            }
+
+            return Http::response(static::isVideoRequest($request) ? FakeResponse::video() : FakeResponse::default());
+        });
     }
 
     /**
@@ -69,6 +83,14 @@ class Gemini extends Facade
         PHPUnit::assertTrue(
             static::recorded($callback)->isNotEmpty(),
             'An expected Gemini request was not sent.'
+        );
+    }
+
+    public static function assertNotSent(callable $callback): void
+    {
+        PHPUnit::assertTrue(
+            static::recorded($callback)->isEmpty(),
+            'An unexpected Gemini request was sent.'
         );
     }
 
@@ -85,12 +107,20 @@ class Gemini extends Facade
     protected static function recorded(?callable $callback = null): Collection
     {
         return Http::recorded(function (Request $request) use ($callback) {
-            if (! str_contains($request->url(), ':generateContent')) {
+            if (static::isVideoRequest($request)) {
+                $model = $request->data()['model'] ?? '';
+            } elseif (str_contains($request->url(), ':generateContent')) {
+                $model = Str::between($request->url(), '/models/', ':generateContent');
+            } else {
                 return false;
             }
 
-            return $callback === null
-                || $callback($request->data(), Str::between($request->url(), '/models/', ':generateContent'));
+            return $callback === null || $callback($request->data(), $model);
         });
+    }
+
+    protected static function isVideoRequest(Request $request): bool
+    {
+        return str_ends_with(Str::before($request->url(), '?'), '/interactions');
     }
 }

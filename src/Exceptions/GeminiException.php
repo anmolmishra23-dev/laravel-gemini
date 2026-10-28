@@ -50,6 +50,22 @@ class GeminiException extends RuntimeException
         return new self($message);
     }
 
+    public static function noVideoReturned(?string $text): self
+    {
+        $message = 'Gemini did not return a video.';
+
+        if (filled($text)) {
+            $message .= " Model said: {$text}";
+        }
+
+        return new self($message);
+    }
+
+    public static function fileNotReady(string $id, string $state): self
+    {
+        return new self("Gemini file [{$id}] is not ready to download (state: {$state}).");
+    }
+
     public function isRateLimited(): bool
     {
         return $this->status === 429;

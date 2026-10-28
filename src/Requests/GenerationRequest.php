@@ -3,7 +3,9 @@
 namespace AnmolMishra\Gemini\Requests;
 
 use AnmolMishra\Gemini\Concerns\HasImageInputs;
+use AnmolMishra\Gemini\Concerns\SerializesWithoutClient;
 use AnmolMishra\Gemini\GeminiClient;
+use AnmolMishra\Gemini\Responses\GeminiResponse;
 use Illuminate\Support\Traits\Conditionable;
 use InvalidArgumentException;
 
@@ -11,6 +13,7 @@ abstract class GenerationRequest
 {
     use Conditionable;
     use HasImageInputs;
+    use SerializesWithoutClient;
 
     protected ?string $prompt = null;
 
@@ -23,11 +26,21 @@ abstract class GenerationRequest
         protected string $model,
     ) {}
 
+    /**
+     * Turn a raw generateContent response into this request's response type.
+     */
+    abstract public function toResponse(array $data): GeminiResponse;
+
     public function model(string $model): static
     {
         $this->model = $model;
 
         return $this;
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
     }
 
     public function prompt(string $prompt): static
@@ -66,18 +79,36 @@ abstract class GenerationRequest
      */
     public function toPayload(): array
     {
+        return $this->buildPayload([$this->userTurn()]);
+    }
+
+    protected function call(): array
+    {
+        return $this->client->generateContent($this->model, $this->toPayload());
+    }
+
+    protected function userTurn(): array
+    {
         if ($this->prompt === null && $this->images === []) {
             throw new InvalidArgumentException('A Gemini request needs a prompt or at least one image.');
         }
 
         // Gemini recommends placing images before the text prompt.
-        $parts = $this->images;
+        $parts = array_map(
+            fn (array $image) => ['inlineData' => ['mimeType' => $image['mimeType'], 'data' => $image['data']]],
+            $this->resolveImages(),
+        );
 
         if ($this->prompt !== null) {
             $parts[] = ['text' => $this->prompt];
         }
 
-        $payload = ['contents' => [['role' => 'user', 'parts' => $parts]]];
+        return ['role' => 'user', 'parts' => $parts];
+    }
+
+    protected function buildPayload(array $contents): array
+    {
+        $payload = ['contents' => $contents];
 
         if ($this->system !== null) {
             $payload['systemInstruction'] = ['parts' => [['text' => $this->system]]];
@@ -95,10 +126,5 @@ abstract class GenerationRequest
     protected function defaultGenerationConfig(): array
     {
         return [];
-    }
-
-    protected function send(): array
-    {
-        return $this->client->generateContent($this->model, $this->toPayload());
     }
 }

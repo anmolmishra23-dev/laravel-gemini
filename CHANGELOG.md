@@ -2,6 +2,20 @@
 
 All notable changes to this package are documented here.
 
+## v0.2.0 - 2026-10-28
+
+- Multi-turn image editing with `Gemini::imageChat()`, including saving and restoring the conversation
+- Batch generation with `Gemini::batch()`: concurrent requests, per-item failures and `store()` for every image
+- Queued generation with `->queue()`, the `GenerateMedia` job (works with `Bus::batch()`) and the `ImageGenerated`, `VideoGenerated` and `GenerationFailed` events
+- Video generation with Gemini Omni: text-to-video, image-to-video, and editing or extending earlier videos
+- Cost tracking with `$response->cost()` and a configurable pricing table
+- `Usage` now reports image output tokens
+- `gemini:video` artisan command
+- Disk and URL images are read when the request is sent instead of when attached
+- Fakes for video responses, plus `Gemini::assertNotSent()`
+- Contributing guide, security policy and issue templates
+- The package now requires `laravel/framework` instead of individual `illuminate/*` components
+
 ## v0.1.1 - 2026-10-28
 
 - Drop Laravel 11 support. Every Laravel 11 release has unpatched security advisories, so Composer refuses to install it.

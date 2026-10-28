@@ -33,6 +33,11 @@ class TextRequest extends GenerationRequest
      */
     public function generate(): TextResponse
     {
-        return TextResponse::fromArray($this->send());
+        return $this->toResponse($this->call());
+    }
+
+    public function toResponse(array $data): TextResponse
+    {
+        return TextResponse::fromArray($data, $this->model);
     }
 }
