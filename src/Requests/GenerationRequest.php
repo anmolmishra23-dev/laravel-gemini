@@ -1,0 +1,104 @@
+<?php
+
+namespace AnmolMishra\Gemini\Requests;
+
+use AnmolMishra\Gemini\Concerns\HasImageInputs;
+use AnmolMishra\Gemini\GeminiClient;
+use Illuminate\Support\Traits\Conditionable;
+use InvalidArgumentException;
+
+abstract class GenerationRequest
+{
+    use Conditionable;
+    use HasImageInputs;
+
+    protected ?string $prompt = null;
+
+    protected ?string $system = null;
+
+    protected array $generationConfig = [];
+
+    public function __construct(
+        protected GeminiClient $client,
+        protected string $model,
+    ) {}
+
+    public function model(string $model): static
+    {
+        $this->model = $model;
+
+        return $this;
+    }
+
+    public function prompt(string $prompt): static
+    {
+        $this->prompt = $prompt;
+
+        return $this;
+    }
+
+    public function system(string $instruction): static
+    {
+        $this->system = $instruction;
+
+        return $this;
+    }
+
+    public function temperature(float $temperature): static
+    {
+        $this->generationConfig['temperature'] = $temperature;
+
+        return $this;
+    }
+
+    /**
+     * Merge raw generationConfig options, for anything without a dedicated method.
+     */
+    public function withConfig(array $config): static
+    {
+        $this->generationConfig = array_replace_recursive($this->generationConfig, $config);
+
+        return $this;
+    }
+
+    /**
+     * Build the generateContent payload without sending it.
+     */
+    public function toPayload(): array
+    {
+        if ($this->prompt === null && $this->images === []) {
+            throw new InvalidArgumentException('A Gemini request needs a prompt or at least one image.');
+        }
+
+        // Gemini recommends placing images before the text prompt.
+        $parts = $this->images;
+
+        if ($this->prompt !== null) {
+            $parts[] = ['text' => $this->prompt];
+        }
+
+        $payload = ['contents' => [['role' => 'user', 'parts' => $parts]]];
+
+        if ($this->system !== null) {
+            $payload['systemInstruction'] = ['parts' => [['text' => $this->system]]];
+        }
+
+        $config = array_replace_recursive($this->defaultGenerationConfig(), $this->generationConfig);
+
+        if ($config !== []) {
+            $payload['generationConfig'] = $config;
+        }
+
+        return $payload;
+    }
+
+    protected function defaultGenerationConfig(): array
+    {
+        return [];
+    }
+
+    protected function send(): array
+    {
+        return $this->client->generateContent($this->model, $this->toPayload());
+    }
+}

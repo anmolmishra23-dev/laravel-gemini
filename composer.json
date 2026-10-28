@@ -1,0 +1,58 @@
+{
+    "name": "anmolmishra23-dev/laravel-gemini",
+    "description": "Unofficial Laravel SDK for Google Gemini: image generation, image editing and text generation with a fluent API and built-in test fakes.",
+    "keywords": ["laravel", "gemini", "google-gemini", "ai", "image-generation", "nano-banana", "llm"],
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Anmol Mishra"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-fileinfo": "*",
+        "guzzlehttp/guzzle": "^7.8",
+        "illuminate/console": "^11.0|^12.0|^13.0",
+        "illuminate/filesystem": "^11.0|^12.0|^13.0",
+        "illuminate/http": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "AnmolMishra\\Gemini\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "AnmolMishra\\Gemini\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "format": "pint"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "AnmolMishra\\Gemini\\GeminiServiceProvider"
+            ],
+            "aliases": {
+                "Gemini": "AnmolMishra\\Gemini\\Facades\\Gemini"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
