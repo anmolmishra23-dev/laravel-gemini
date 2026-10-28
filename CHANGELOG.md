@@ -2,6 +2,16 @@
 
 All notable changes to this package are documented here.
 
+## v1.1.0 - 2026-10-28
+
+- `url()` and `temporaryUrl()` on saved images and videos, responses and the `ImageGenerated` / `VideoGenerated` events
+- `path()` and `disk()` tell you where a file was saved
+- Public or private saving: a `$visibility` argument on `store()` and `save()`, `storePublicly()`, and the `GEMINI_VISIBILITY` setting
+- `queue()` accepts a `visibility` argument
+- Batch results: `storePublicly()` and `urls()`
+- `--public` option on the artisan commands, which now print the file's URL
+- README guide for S3, Google Cloud Storage, Cloudflare R2, Azure and other buckets
+
 ## v1.0.0 - 2026-10-28
 
 First stable release. Every feature has been tested against the live Gemini API: text and JSON output, image generation, multi-turn editing, reference-image editing, batches and video.

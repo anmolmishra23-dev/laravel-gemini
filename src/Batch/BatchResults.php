@@ -59,12 +59,40 @@ class BatchResults implements Countable, IteratorAggregate
      *
      * @return array<array-key, string>
      */
-    public function store(string $directory = '', ?string $disk = null): array
+    public function store(string $directory = '', ?string $disk = null, ?string $visibility = null): array
     {
         return array_map(
-            fn (ImageResponse $response) => $response->store($directory, $disk),
-            array_filter($this->results, fn ($result) => $result instanceof ImageResponse),
+            fn (ImageResponse $response) => $response->store($directory, $disk, $visibility),
+            $this->images(),
         );
+    }
+
+    /**
+     * Store every generated image so anyone with the URL can view it.
+     *
+     * @return array<array-key, string>
+     */
+    public function storePublicly(string $directory = '', ?string $disk = null): array
+    {
+        return $this->store($directory, $disk, 'public');
+    }
+
+    /**
+     * The URLs of the stored images, keyed like the requests. Call store() first.
+     *
+     * @return array<array-key, string>
+     */
+    public function urls(): array
+    {
+        return array_map(fn (ImageResponse $response) => $response->url(), $this->images());
+    }
+
+    /**
+     * @return array<array-key, ImageResponse>
+     */
+    protected function images(): array
+    {
+        return array_filter($this->results, fn ($result) => $result instanceof ImageResponse);
     }
 
     /**

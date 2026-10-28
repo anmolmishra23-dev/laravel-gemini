@@ -32,11 +32,17 @@ class GenerateMedia implements ShouldQueue
 
     public int $timeout;
 
+    /**
+     * @param  string|null  $disk  any disk from config/filesystems.php, e.g. "s3" or "gcs"
+     * @param  array  $meta  passed back to you in the event, e.g. ['product_id' => 5]
+     * @param  string|null  $visibility  "public", "private", or null for the disk's default
+     */
     public function __construct(
         public ImageRequest|VideoRequest $request,
         public string $directory = 'gemini',
         public ?string $disk = null,
         public array $meta = [],
+        public ?string $visibility = null,
     ) {
         $this->timeout = $request instanceof VideoRequest ? 900 : 300;
 
@@ -51,12 +57,16 @@ class GenerateMedia implements ShouldQueue
         }
 
         $response = $this->request->generate();
-        $path = $response->store($this->directory, $this->disk);
+        $path = $response->store($this->directory, $this->disk, $this->visibility);
 
         if ($this->request instanceof VideoRequest) {
-            event(new VideoGenerated($path, $this->disk, $this->request->getModel(), $response->id, $this->meta));
+            $disk = $response->video()->disk();
+
+            event(new VideoGenerated($path, $disk, $this->request->getModel(), $response->id, $this->meta));
         } else {
-            event(new ImageGenerated($path, $this->disk, $this->request->getModel(), $response->text, $response->cost(), $this->meta));
+            $disk = $response->image()->disk();
+
+            event(new ImageGenerated($path, $disk, $this->request->getModel(), $response->text, $response->cost(), $this->meta));
         }
     }
 

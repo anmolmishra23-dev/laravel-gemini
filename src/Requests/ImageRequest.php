@@ -55,10 +55,14 @@ class ImageRequest extends GenerationRequest
 
     /**
      * Generate on the queue, store the image in the directory and fire ImageGenerated.
+     *
+     * @param  string|null  $disk  any disk from config/filesystems.php, e.g. "s3" or "gcs"
+     * @param  array  $meta  passed back to you in the event, e.g. ['product_id' => 5]
+     * @param  string|null  $visibility  "public", "private", or null for the disk's default
      */
-    public function queue(string $directory = 'gemini', ?string $disk = null, array $meta = []): PendingDispatch
+    public function queue(string $directory = 'gemini', ?string $disk = null, array $meta = [], ?string $visibility = null): PendingDispatch
     {
-        return GenerateMedia::dispatch($this, $directory, $disk, $meta);
+        return GenerateMedia::dispatch($this, $directory, $disk, $meta, $visibility);
     }
 
     /**

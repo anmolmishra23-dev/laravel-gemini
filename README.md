@@ -35,7 +35,8 @@ $chat->send('Cover everything in deep snow and make it a winter evening. Keep th
 - **Video:** text-to-video and image-to-video with Gemini Omni
 - **Text:** system instructions, vision and structured JSON output
 - **Cost tracking:** an estimated USD cost for every response
-- Save straight to any Laravel storage disk, or return files from routes
+- **Storage:** save to S3, Google Cloud Storage, Cloudflare R2, Azure or any Laravel disk, and get public or expiring URLs
+- Return generated files straight from routes
 - Automatic retries on 429 / 5xx, with clear exceptions
 - `Gemini::fake()` and assertions for testing your app
 
@@ -46,6 +47,7 @@ $chat->send('Cover everything in deep snow and make it a winter evening. Keep th
 - [Installation](#installation)
 - [Image generation](#image-generation)
 - [Image editing](#image-editing-and-reference-images)
+- [Saving to S3, Google Cloud and other buckets](#saving-to-s3-google-cloud-and-other-buckets)
 - [Multi-turn editing](#multi-turn-editing)
 - [Batch generation](#batch-generation)
 - [Queues and events](#queues-and-events)
@@ -98,8 +100,9 @@ $response = Gemini::image('A cozy cabin in snowy mountains at sunset')
 $image = $response->image();          // first image
 
 $image->store('images');              // random name on the default disk, returns the path
-$image->store('images', 's3');        // on a specific disk
+$image->store('images', 's3');        // on a specific disk (S3, GCS, R2, ...)
 $image->save('images/cabin.png');     // exact path
+$image->url();                        // URL of the saved image
 $image->bytes();                      // raw binary
 $image->base64();                     // base64 string
 $image->dataUri();                    // data:image/png;base64,... for <img src>
@@ -146,6 +149,119 @@ Gemini::image('Put this product on a marble kitchen counter')
 ```
 
 Disk and URL images are read when the request is sent, so queued requests stay small.
+
+## Saving to S3, Google Cloud and other buckets
+
+Generated images and videos are saved with Laravel's own storage system, so **any disk your app has in `config/filesystems.php` works**. Pass the disk name as the second argument:
+
+```php
+$response = Gemini::image('A cozy cabin')->generate();
+
+$response->store('images', 's3');     // Amazon S3
+$response->store('images', 'gcs');    // Google Cloud Storage
+$response->store('images', 'r2');     // Cloudflare R2
+$response->store('images', 'local');  // your server's disk
+```
+
+Or set a default for everything in `.env`:
+
+```env
+GEMINI_DISK=s3
+```
+
+### Setting up a bucket
+
+You only need to do this once per app. Pick your provider:
+
+| Provider | Install | Disk driver |
+| --- | --- | --- |
+| Amazon S3 | `composer require league/flysystem-aws-s3-v3 "^3.0"` | `s3` |
+| Cloudflare R2, DigitalOcean Spaces, Wasabi, MinIO, Backblaze B2 | same as S3 | `s3` with that provider's `endpoint` |
+| Google Cloud Storage | `composer require spatie/laravel-google-cloud-storage` | `gcs` |
+| Azure Blob Storage | `composer require azure-oss/storage-blob-laravel` | `azure-storage-blob` |
+| FTP / SFTP | `composer require league/flysystem-ftp "^3.0"` or `league/flysystem-sftp-v3 "^3.0"` | `ftp` / `sftp` |
+| Your server | nothing | `local` |
+
+For example, Amazon S3 is already in Laravel's default `config/filesystems.php`. Just fill in `.env`:
+
+```env
+AWS_ACCESS_KEY_ID=your-key
+AWS_SECRET_ACCESS_KEY=your-secret
+AWS_DEFAULT_REGION=ap-south-1
+AWS_BUCKET=my-bucket
+```
+
+Cloudflare R2 uses the S3 driver with its own endpoint. Add a disk to `config/filesystems.php`:
+
+```php
+'r2' => [
+    'driver' => 's3',
+    'key' => env('R2_ACCESS_KEY_ID'),
+    'secret' => env('R2_SECRET_ACCESS_KEY'),
+    'region' => 'auto',
+    'bucket' => env('R2_BUCKET'),
+    'endpoint' => env('R2_ENDPOINT'),   // https://<account-id>.r2.cloudflarestorage.com
+    'url' => env('R2_PUBLIC_URL'),      // your public bucket URL, for url()
+],
+```
+
+For Google Cloud Storage and Azure, follow the setup in each package's README, then use the disk name they give you.
+
+### Getting the URL
+
+After saving, ask the image (or video) for its URL:
+
+```php
+$response = Gemini::image('A cozy cabin')->generate();
+$response->store('images', 's3');
+
+$response->url();                                  // https://my-bucket.s3.ap-south-1.amazonaws.com/images/Xy3...png
+$response->temporaryUrl(now()->addHour());         // a link that expires, for private buckets
+
+$response->image()->path();   // images/Xy3...png
+$response->image()->disk();   // s3
+```
+
+`url()` needs the disk to have a public URL (the `url` setting in `config/filesystems.php`). For private buckets, use `temporaryUrl()`.
+
+### Public or private files
+
+Some buckets keep files private unless you say otherwise. Save a file publicly, so anyone with the URL can see it:
+
+```php
+$response->storePublicly('images', 's3');
+
+// Same thing:
+$response->store('images', 's3', 'public');
+```
+
+Or keep it private:
+
+```php
+$response->store('images', 's3', 'private');
+```
+
+Set a default for everything with `GEMINI_VISIBILITY=public` (or `private`) in `.env`. When it isn't set, each disk uses its own default.
+
+> Cloudflare R2 and buckets with "uniform access" (common on Google Cloud Storage) ignore per-file visibility. On those, make the whole bucket public or private in the provider's dashboard.
+
+### Batches and queues
+
+Batches and queued jobs work the same way:
+
+```php
+// Batch: save every image publicly and get all the URLs
+$results = Gemini::batch(['mug' => 'A white mug', 'shirt' => 'A black t-shirt'])->generate();
+$results->storePublicly('catalog', 's3');
+$results->urls();   // ['mug' => 'https://...', 'shirt' => 'https://...']
+
+// Queue: the event tells you where the file went
+Gemini::image('A white mug')->queue('products', 's3', meta: ['product_id' => 5], visibility: 'public');
+
+Event::listen(function (ImageGenerated $event) {
+    Product::find($event->meta['product_id'])->update(['image_url' => $event->url()]);
+});
+```
 
 ## Multi-turn editing
 
@@ -238,7 +354,7 @@ use AnmolMishra\Gemini\Events\ImageGenerated;
 Event::listen(function (ImageGenerated $event) {
     Product::find($event->meta['product_id'])->update(['image' => $event->path]);
 
-    // Also: $event->disk, $event->model, $event->text, $event->cost
+    // Also: $event->url(), $event->temporaryUrl(...), $event->disk, $event->model, $event->text, $event->cost
 });
 
 Event::listen(function (GenerationFailed $event) {
@@ -466,6 +582,7 @@ To test queued generation, use `Bus::fake()` and assert `GenerateMedia` was disp
 | `retry.sleep` | `GEMINI_RETRY_SLEEP` | `1000` ms |
 | `video.timeout` | `GEMINI_VIDEO_TIMEOUT` | `600` seconds |
 | `disk` | `GEMINI_DISK` | default disk |
+| `visibility` | `GEMINI_VISIBILITY` | each disk's default |
 | `queue.connection` | `GEMINI_QUEUE_CONNECTION` | default connection |
 | `queue.name` | `GEMINI_QUEUE` | default queue |
 | `pricing` | none | see [Cost tracking](#cost-tracking) |

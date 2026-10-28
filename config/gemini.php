@@ -68,12 +68,17 @@ return [
     | Storage Disk
     |--------------------------------------------------------------------------
     |
-    | The disk generated images and videos are saved to. Null uses your
-    | default disk.
+    | The disk generated images and videos are saved to. Any disk from
+    | config/filesystems.php works: local, s3, gcs, r2, azure, ftp and more.
+    | Null uses your default disk.
     |
     */
 
     'disk' => env('GEMINI_DISK'),
+
+    // "public" makes saved files viewable by anyone with the URL, "private"
+    // keeps them private. Null uses each disk's own default.
+    'visibility' => env('GEMINI_VISIBILITY'),
 
     /*
     |--------------------------------------------------------------------------

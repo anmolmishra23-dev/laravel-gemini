@@ -14,7 +14,8 @@ class GenerateImageCommand extends Command
         {--aspect-ratio= : e.g. 16:9}
         {--size= : e.g. 1K, 2K, 4K}
         {--disk= : Storage disk to save to}
-        {--dir=gemini : Directory to save to}';
+        {--dir=gemini : Directory to save to}
+        {--public : Make the file viewable by anyone with the URL}';
 
     protected $description = 'Generate an image with Gemini and save it to storage';
 
@@ -26,7 +27,8 @@ class GenerateImageCommand extends Command
             ->when($this->option('size'), fn ($request, $size) => $request->size($size));
 
         try {
-            $path = $request->generate()->store($this->option('dir'), $this->option('disk'));
+            $response = $request->generate();
+            $path = $response->store($this->option('dir'), $this->option('disk'), $this->option('public') ? 'public' : null);
         } catch (GeminiException $e) {
             $this->components->error($e->getMessage());
 
@@ -34,6 +36,9 @@ class GenerateImageCommand extends Command
         }
 
         $this->components->info("Image saved to [{$path}].");
+
+        // Not every disk can make URLs (FTP, for example), so this is best effort.
+        rescue(fn () => $this->components->info("URL: {$response->url()}"), report: false);
 
         return self::SUCCESS;
     }

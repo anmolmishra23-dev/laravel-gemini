@@ -15,7 +15,8 @@ class GenerateVideoCommand extends Command
         {--resolution= : 360p, 720p, 1080p or 4k}
         {--image= : Local image to animate}
         {--disk= : Storage disk to save to}
-        {--dir=gemini : Directory to save to}';
+        {--dir=gemini : Directory to save to}
+        {--public : Make the file viewable by anyone with the URL}';
 
     protected $description = 'Generate a video with Gemini and save it to storage';
 
@@ -30,7 +31,8 @@ class GenerateVideoCommand extends Command
         $this->components->info('Generating video. This can take a few minutes...');
 
         try {
-            $path = $request->generate()->store($this->option('dir'), $this->option('disk'));
+            $response = $request->generate();
+            $path = $response->store($this->option('dir'), $this->option('disk'), $this->option('public') ? 'public' : null);
         } catch (GeminiException $e) {
             $this->components->error($e->getMessage());
 
@@ -38,6 +40,9 @@ class GenerateVideoCommand extends Command
         }
 
         $this->components->info("Video saved to [{$path}].");
+
+        // Not every disk can make URLs (FTP, for example), so this is best effort.
+        rescue(fn () => $this->components->info("URL: {$response->url()}"), report: false);
 
         return self::SUCCESS;
     }
