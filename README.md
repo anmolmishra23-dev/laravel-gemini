@@ -29,7 +29,7 @@ Gemini::image('A cozy cabin in snowy mountains at sunset')
 ## Requirements
 
 - PHP 8.2+
-- Laravel 11, 12 or 13
+- Laravel 12 or 13
 
 ## Installation
 
