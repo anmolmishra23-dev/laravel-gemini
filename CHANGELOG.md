@@ -2,6 +2,10 @@
 
 All notable changes to this package are documented here.
 
+## v1.1.1 - 2026-11-16
+
+- Support Guzzle 8, so the package installs in new Laravel 13 apps
+
 ## v1.1.0 - 2026-10-28
 
 - `url()` and `temporaryUrl()` on saved images and videos, responses and the `ImageGenerated` / `VideoGenerated` events

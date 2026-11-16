@@ -22,7 +22,7 @@
     "require": {
         "php": "^8.2",
         "ext-fileinfo": "*",
-        "guzzlehttp/guzzle": "^7.8",
+        "guzzlehttp/guzzle": "^7.8|^8.0",
         "laravel/framework": "^12.0|^13.0"
     },
     "require-dev": {
