@@ -39,7 +39,7 @@ class Gemini
      */
     public function text(?string $prompt = null): TextRequest
     {
-        $request = new TextRequest($this->client, $this->config['models']['text'] ?? 'gemini-3.5-flash');
+        $request = new TextRequest($this->client, $this->config['models']['text'] ?? 'gemini-3.8-flash');
 
         return $prompt === null ? $request : $request->prompt($prompt);
     }

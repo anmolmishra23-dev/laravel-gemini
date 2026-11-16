@@ -62,3 +62,7 @@ it('adds up the cost of a batch', function () {
 
     expect($results->totalCost())->toBe(0.6);
 });
+
+it('has a price for the default image and text models', function () {
+    expect(config('gemini.pricing'))->toHaveKeys([config('gemini.models.image'), config('gemini.models.text')]);
+});

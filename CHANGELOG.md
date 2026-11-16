@@ -2,6 +2,15 @@
 
 All notable changes to this package are documented here.
 
+## v1.2.0 - 2026-11-16
+
+- The default text model is now `gemini-3.8-flash`. `gemini-3.5-flash` had no price, so `cost()` returned null for the default model; it now has a price too. Set `GEMINI_TEXT_MODEL` to keep using another model.
+- `safetySettings()`, `tools()`, `toolConfig()` and `withPayload()` on image, chat and text requests
+- `withConfig()` sends `safetySettings`, `tools` and `toolConfig` at the top level of the request instead of inside `generationConfig`
+- Batches retry connection errors, 429 and 5xx responses like single requests do
+- Queued job timeouts are worked out from the HTTP timeout, retries and video polling, so jobs are no longer killed while the client is still retrying. Override them with `GEMINI_IMAGE_JOB_TIMEOUT` and `GEMINI_VIDEO_JOB_TIMEOUT`.
+- Pricing updated from Google's November 2026 price list
+
 ## v1.1.1 - 2026-11-16
 
 - Support Guzzle 8, so the package installs in new Laravel 13 apps

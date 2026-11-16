@@ -8,6 +8,7 @@ use AnmolMishra\Gemini\Testing\FakeResponse;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 
 /**
  * Answer each request based on its prompt, since batch requests run concurrently.
@@ -93,3 +94,51 @@ it('throws for a missing api key', function () {
 
     Gemini::batch(['A mug'])->generate();
 })->throws(GeminiException::class, 'API key is missing');
+
+it('retries rate limits and server errors inside a batch', function () {
+    config(['gemini.api_key' => 'test-key', 'gemini.retry.times' => 3, 'gemini.retry.sleep' => 250]);
+    Sleep::fake();
+
+    $attempts = ['A mug' => 0, 'A shirt' => 0, 'A hat' => 0];
+    $replies = [
+        'A mug' => [FakeResponse::image()],
+        'A shirt' => [FakeResponse::error(429, 'Quota exceeded'), FakeResponse::error(503, 'Overloaded'), FakeResponse::image()],
+        'A hat' => [FakeResponse::error(500, 'Oops'), FakeResponse::image()],
+    ];
+
+    Http::fake(function (Request $request) use (&$attempts, $replies) {
+        $prompt = collect($request->data()['contents'][0]['parts'])->pluck('text')->filter()->first();
+
+        return $replies[$prompt][$attempts[$prompt]++];
+    });
+
+    $results = Gemini::batch(['mug' => 'A mug', 'shirt' => 'A shirt', 'hat' => 'A hat'])->generate();
+
+    expect($results->hasFailures())->toBeFalse()
+        ->and(array_keys($results->all()))->toBe(['mug', 'shirt', 'hat'])
+        ->and($attempts)->toBe(['A mug' => 1, 'A shirt' => 3, 'A hat' => 2]);
+
+    Sleep::assertSequence([Sleep::for(250)->milliseconds(), Sleep::for(250)->milliseconds()]);
+});
+
+it('gives up after the configured attempts', function () {
+    config(['gemini.api_key' => 'test-key', 'gemini.retry.times' => 2]);
+    Sleep::fake();
+    fakeByPrompt(['A mug' => FakeResponse::error(429, 'Quota exceeded')]);
+
+    $results = Gemini::batch(['mug' => 'A mug'])->generate();
+
+    expect($results->get('mug')->isRateLimited())->toBeTrue();
+    Http::assertSentCount(2);
+});
+
+it('does not retry client errors', function () {
+    config(['gemini.api_key' => 'test-key', 'gemini.retry.times' => 3]);
+    Sleep::fake();
+    fakeByPrompt(['A mug' => FakeResponse::error(400, 'Bad request')]);
+
+    Gemini::batch(['mug' => 'A mug'])->generate();
+
+    Http::assertSentCount(1);
+    Sleep::assertNeverSlept();
+});

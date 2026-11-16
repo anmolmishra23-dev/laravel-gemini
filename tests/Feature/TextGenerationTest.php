@@ -78,3 +78,45 @@ it('counts sent requests', function () {
 
     Gemini::assertSentCount(2);
 });
+
+it('uses a priced model by default', function () {
+    Gemini::fake();
+
+    expect(Gemini::text('Hi')->getModel())->toBe('gemini-3.8-flash')
+        ->and(Gemini::text('Hi')->generate()->cost())->not->toBeNull();
+});
+
+it('sends safety settings and tools at the top level', function () {
+    Gemini::fake();
+
+    Gemini::text('Latest Laravel release?')
+        ->safetySettings(['HARM_CATEGORY_HARASSMENT' => 'BLOCK_ONLY_HIGH'])
+        ->tools([['googleSearch' => (object) []]])
+        ->toolConfig(['functionCallingConfig' => ['mode' => 'AUTO']])
+        ->temperature(0.2)
+        ->generate();
+
+    Gemini::assertSent(fn (array $payload) => $payload['safetySettings'] === [['category' => 'HARM_CATEGORY_HARASSMENT', 'threshold' => 'BLOCK_ONLY_HIGH']]
+        && json_encode($payload['tools']) === '[{"googleSearch":{}}]'
+        && $payload['toolConfig'] === ['functionCallingConfig' => ['mode' => 'AUTO']]
+        && $payload['generationConfig'] === ['temperature' => 0.2]);
+});
+
+it('moves top-level fields out of withConfig', function () {
+    $settings = [['category' => 'HARM_CATEGORY_HATE_SPEECH', 'threshold' => 'BLOCK_NONE']];
+
+    $payload = Gemini::text('Hi')
+        ->withConfig(['safetySettings' => $settings, 'tools' => [['codeExecution' => []]], 'topK' => 20])
+        ->toPayload();
+
+    expect($payload['safetySettings'])->toBe($settings)
+        ->and($payload['tools'])->toBe([['codeExecution' => []]])
+        ->and($payload['generationConfig'])->toBe(['topK' => 20]);
+});
+
+it('merges raw top-level fields with withPayload', function () {
+    $payload = Gemini::text('Hi')->withPayload(['cachedContent' => 'cachedContents/abc'])->toPayload();
+
+    expect($payload['cachedContent'])->toBe('cachedContents/abc')
+        ->and($payload)->not->toHaveKey('generationConfig');
+});

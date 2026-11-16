@@ -30,8 +30,9 @@ class GeminiClient
     }
 
     /**
-     * Send several generateContent payloads concurrently. Failures are returned
-     * as exceptions in the result instead of being thrown.
+     * Send several generateContent payloads concurrently. Requests that fail with a
+     * connection error, 429 or 5xx are retried together, like single requests.
+     * Failures are returned as exceptions in the result instead of being thrown.
      *
      * @param  array<array-key, array{0: string, 1: array}>  $requests  [model, payload] keyed by your own keys
      * @return array<array-key, array|GeminiException>
@@ -40,27 +41,52 @@ class GeminiClient
     {
         $this->ensureApiKey();
 
-        $responses = Http::pool(function (Pool $pool) use ($requests) {
-            foreach ($requests as $key => [$model, $payload]) {
-                $this->configure($pool->as((string) $key))->post($this->url($model), $payload);
-            }
-        });
-
+        $times = max(1, (int) ($this->config['retry']['times'] ?? 1));
+        $pending = $requests;
         $results = [];
 
-        foreach ($requests as $key => [$model]) {
-            $response = $responses[$key] ?? null;
-
-            try {
-                $results[$key] = $response instanceof Response
-                    ? $this->decode($response, $model)
-                    : throw GeminiException::connectionFailed($model, $response ?? new ConnectionException('No response.'));
-            } catch (GeminiException $e) {
-                $results[$key] = $e;
+        for ($attempt = 1; $pending !== []; $attempt++) {
+            if ($attempt > 1) {
+                Sleep::for((int) ($this->config['retry']['sleep'] ?? 1000))->milliseconds();
             }
+
+            $responses = Http::pool(function (Pool $pool) use ($pending) {
+                foreach ($pending as $key => [$model, $payload]) {
+                    $this->configure($pool->as((string) $key))->post($this->url($model), $payload);
+                }
+            });
+
+            $retry = [];
+
+            foreach ($pending as $key => [$model]) {
+                $response = $responses[$key] ?? null;
+
+                if ($attempt < $times && $this->shouldRetry($response)) {
+                    $retry[$key] = $pending[$key];
+
+                    continue;
+                }
+
+                try {
+                    $results[$key] = $response instanceof Response
+                        ? $this->decode($response, $model)
+                        : throw GeminiException::connectionFailed($model, $response instanceof Throwable ? $response : new ConnectionException('No response.'));
+                } catch (GeminiException $e) {
+                    $results[$key] = $e;
+                }
+            }
+
+            $pending = $retry;
         }
 
-        return $results;
+        // Keep the order of the original requests.
+        return array_replace(array_intersect_key($requests, $results), $results);
+    }
+
+    protected function shouldRetry(mixed $response): bool
+    {
+        return ! $response instanceof Response
+            || in_array($response->status(), self::RETRYABLE_STATUSES);
     }
 
     /**

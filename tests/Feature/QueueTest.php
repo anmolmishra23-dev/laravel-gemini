@@ -90,3 +90,26 @@ it('fires GenerationFailed when generation fails', function () {
         && $event->meta === ['product_id' => 5]
         && str_contains($event->exception->getMessage(), 'Bad prompt'));
 });
+
+it('gives jobs enough time for every retry', function () {
+    config(['gemini.timeout' => 120, 'gemini.retry.times' => 3, 'gemini.retry.sleep' => 1000]);
+    config(['gemini.video.timeout' => 600, 'gemini.video.poll_timeout' => 600]);
+
+    // 3 attempts x 120s + 2s of pauses + 60s spare
+    expect((new GenerateMedia(Gemini::image('A cabin')))->timeout)->toBe(422)
+        // 3 x 600s + 2s + 600s polling + 600s download + 60s spare
+        ->and((new GenerateMedia(Gemini::video('A lighthouse')))->timeout)->toBe(3062);
+});
+
+it('follows the http settings', function () {
+    config(['gemini.timeout' => 60, 'gemini.retry.times' => 1]);
+
+    expect((new GenerateMedia(Gemini::image('A cabin')))->timeout)->toBe(120);
+});
+
+it('uses the configured job timeouts', function () {
+    config(['gemini.queue.timeout.image' => 500, 'gemini.queue.timeout.video' => '1800']);
+
+    expect((new GenerateMedia(Gemini::image('A cabin')))->timeout)->toBe(500)
+        ->and((new GenerateMedia(Gemini::video('A lighthouse')))->timeout)->toBe(1800);
+});

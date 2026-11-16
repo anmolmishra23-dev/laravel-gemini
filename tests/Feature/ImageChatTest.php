@@ -81,3 +81,14 @@ it('leaves the history unchanged when a request fails', function () {
 
     expect($chat->history())->toBe([]);
 });
+
+it('sends safety settings with every turn', function () {
+    Gemini::fake();
+
+    $chat = Gemini::imageChat()->safetySettings(['HARM_CATEGORY_DANGEROUS_CONTENT' => 'BLOCK_ONLY_HIGH']);
+    $chat->send('A cabin');
+    $chat->send('Add snow');
+
+    Gemini::assertSentCount(2);
+    Gemini::assertNotSent(fn (array $payload) => ($payload['safetySettings'][0]['threshold'] ?? null) !== 'BLOCK_ONLY_HIGH');
+});

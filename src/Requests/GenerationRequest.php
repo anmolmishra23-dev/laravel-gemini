@@ -15,11 +15,18 @@ abstract class GenerationRequest
     use HasImageInputs;
     use SerializesWithoutClient;
 
+    /**
+     * Request fields that sit next to generationConfig rather than inside it.
+     */
+    protected const TOP_LEVEL_FIELDS = ['safetySettings', 'tools', 'toolConfig', 'cachedContent', 'systemInstruction'];
+
     protected ?string $prompt = null;
 
     protected ?string $system = null;
 
     protected array $generationConfig = [];
+
+    protected array $payload = [];
 
     public function __construct(
         protected GeminiClient $client,
@@ -66,12 +73,57 @@ abstract class GenerationRequest
 
     /**
      * Merge raw generationConfig options, for anything without a dedicated method.
+     *
+     * Top-level request fields such as safetySettings and tools are moved out of
+     * generationConfig to where the API expects them.
      */
     public function withConfig(array $config): static
     {
-        $this->generationConfig = array_replace_recursive($this->generationConfig, $config);
+        $topLevel = array_intersect_key($config, array_flip(self::TOP_LEVEL_FIELDS));
+
+        $this->generationConfig = array_replace_recursive($this->generationConfig, array_diff_key($config, $topLevel));
+
+        return $this->withPayload($topLevel);
+    }
+
+    /**
+     * Merge raw fields into the top level of the request, next to contents and generationConfig.
+     */
+    public function withPayload(array $fields): static
+    {
+        $this->payload = array_replace($this->payload, $fields);
 
         return $this;
+    }
+
+    /**
+     * Change how strictly content is blocked. Pass a map of category to threshold,
+     * e.g. ['HARM_CATEGORY_HARASSMENT' => 'BLOCK_ONLY_HIGH'], or the API's list format.
+     */
+    public function safetySettings(array $settings): static
+    {
+        if (! array_is_list($settings)) {
+            $settings = array_map(
+                fn (string $category, string $threshold) => ['category' => $category, 'threshold' => $threshold],
+                array_keys($settings),
+                $settings,
+            );
+        }
+
+        return $this->withPayload(['safetySettings' => $settings]);
+    }
+
+    /**
+     * Tools the model can use, e.g. [['googleSearch' => (object) []]].
+     */
+    public function tools(array $tools): static
+    {
+        return $this->withPayload(['tools' => $tools]);
+    }
+
+    public function toolConfig(array $config): static
+    {
+        return $this->withPayload(['toolConfig' => $config]);
     }
 
     /**
@@ -113,6 +165,8 @@ abstract class GenerationRequest
         if ($this->system !== null) {
             $payload['systemInstruction'] = ['parts' => [['text' => $this->system]]];
         }
+
+        $payload = array_replace($payload, $this->payload);
 
         $config = array_replace_recursive($this->defaultGenerationConfig(), $this->generationConfig);
 

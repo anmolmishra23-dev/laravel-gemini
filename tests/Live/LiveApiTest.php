@@ -43,6 +43,17 @@ it('generates text and json', function () {
     logCost('text (json)', $response->cost(), json_encode($response->json()));
 })->group('live');
 
+it('sends safety settings and tools to the default text model', function () {
+    $response = Gemini::text('In one short sentence, what is the latest stable version of Laravel?')
+        ->safetySettings(['HARM_CATEGORY_HARASSMENT' => 'BLOCK_ONLY_HIGH'])
+        ->tools([['googleSearch' => (object) []]])
+        ->generate();
+
+    expect($response->text())->not->toBeEmpty()
+        ->and($response->cost())->not->toBeNull();
+    logCost('text (search)', $response->cost(), $response->model.' '.$response->text());
+})->group('live');
+
 it('generates an image', function () {
     $response = Gemini::image('A cozy wooden cabin in the mountains at golden hour, photorealistic')
         ->aspectRatio('16:9')

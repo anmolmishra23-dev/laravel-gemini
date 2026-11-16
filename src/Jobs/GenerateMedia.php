@@ -44,10 +44,34 @@ class GenerateMedia implements ShouldQueue
         public array $meta = [],
         public ?string $visibility = null,
     ) {
-        $this->timeout = $request instanceof VideoRequest ? 900 : 300;
+        $this->timeout = static::timeoutFor($request);
 
         $this->onConnection(config('gemini.queue.connection'));
         $this->onQueue(config('gemini.queue.name'));
+    }
+
+    /**
+     * The configured job timeout, or enough time for every HTTP attempt to time
+     * out, the retry pauses, video polling and the download, plus a minute spare.
+     */
+    public static function timeoutFor(ImageRequest|VideoRequest $request): int
+    {
+        $video = $request instanceof VideoRequest;
+
+        if ($configured = config('gemini.queue.timeout.'.($video ? 'video' : 'image'))) {
+            return (int) $configured;
+        }
+
+        $times = max(1, (int) config('gemini.retry.times', 1));
+        $pauses = (int) ceil(($times - 1) * (int) config('gemini.retry.sleep', 1000) / 1000);
+
+        if (! $video) {
+            return $times * (int) config('gemini.timeout', 120) + $pauses + 60;
+        }
+
+        $requestTimeout = (int) config('gemini.video.timeout', 600);
+
+        return $times * $requestTimeout + $pauses + (int) config('gemini.video.poll_timeout', 600) + $requestTimeout + 60;
     }
 
     public function handle(): void

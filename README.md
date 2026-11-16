@@ -364,7 +364,7 @@ Event::listen(function (GenerationFailed $event) {
 
 Videos work the same way and fire `VideoGenerated`.
 
-`queue()` returns Laravel's pending dispatch, so you can chain `->onQueue('ai')` or `->delay(...)`. Set a default connection and queue with `GEMINI_QUEUE_CONNECTION` and `GEMINI_QUEUE`. Jobs time out after 300 seconds for images and 900 for videos, so make sure your queue connection's `retry_after` is longer than that.
+`queue()` returns Laravel's pending dispatch, so you can chain `->onQueue('ai')` or `->delay(...)`. Set a default connection and queue with `GEMINI_QUEUE_CONNECTION` and `GEMINI_QUEUE`. Job timeouts leave room for every HTTP retry and, for videos, the polling and download. With the default settings that's 422 seconds for images and 3062 for videos. Make sure your queue connection's `retry_after` is longer than the job timeout, or set your own with `GEMINI_IMAGE_JOB_TIMEOUT` and `GEMINI_VIDEO_JOB_TIMEOUT`.
 
 The API key is never written into the queued job. The worker reads it from its own config.
 
@@ -481,6 +481,21 @@ Pass any `generationConfig` option that has no dedicated method:
 Gemini::image('A cabin')->withConfig(['seed' => 42])->generate();
 ```
 
+Safety settings and tools:
+
+```php
+Gemini::text('What changed in the latest Laravel release?')
+    ->safetySettings(['HARM_CATEGORY_HARASSMENT' => 'BLOCK_ONLY_HIGH'])
+    ->tools([['googleSearch' => (object) []]])
+    ->generate();
+```
+
+`withConfig()` also accepts `safetySettings`, `tools` and `toolConfig` and sends them at the top level of the request, where the API expects them. Add any other top-level field with `withPayload()`:
+
+```php
+Gemini::text('Summarise the report')->withPayload(['cachedContent' => 'cachedContents/abc123']);
+```
+
 Build conditionally:
 
 ```php
@@ -492,7 +507,7 @@ Gemini::image($prompt)
 Send a raw payload with the low-level client:
 
 ```php
-$data = Gemini::client()->generateContent('gemini-3.5-flash', [
+$data = Gemini::client()->generateContent('gemini-3.8-flash', [
     'contents' => [['parts' => [['text' => 'Hello']]]],
 ]);
 ```
@@ -575,7 +590,7 @@ To test queued generation, use `Bus::fake()` and assert `GenerateMedia` was disp
 | `api_key` | `GEMINI_API_KEY` | none |
 | `base_url` | `GEMINI_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` |
 | `models.image` | `GEMINI_IMAGE_MODEL` | `gemini-3.1-flash-image` |
-| `models.text` | `GEMINI_TEXT_MODEL` | `gemini-3.5-flash` |
+| `models.text` | `GEMINI_TEXT_MODEL` | `gemini-3.8-flash` |
 | `models.video` | `GEMINI_VIDEO_MODEL` | `gemini-omni-1.1-flash` |
 | `timeout` | `GEMINI_TIMEOUT` | `120` seconds |
 | `retry.times` | `GEMINI_RETRY_TIMES` | `3` attempts |
@@ -585,6 +600,8 @@ To test queued generation, use `Bus::fake()` and assert `GenerateMedia` was disp
 | `visibility` | `GEMINI_VISIBILITY` | each disk's default |
 | `queue.connection` | `GEMINI_QUEUE_CONNECTION` | default connection |
 | `queue.name` | `GEMINI_QUEUE` | default queue |
+| `queue.timeout.image` | `GEMINI_IMAGE_JOB_TIMEOUT` | worked out from `timeout` and `retry` |
+| `queue.timeout.video` | `GEMINI_VIDEO_JOB_TIMEOUT` | worked out from the `video` and `retry` settings |
 | `pricing` | none | see [Cost tracking](#cost-tracking) |
 
 ## Contributing

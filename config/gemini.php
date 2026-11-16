@@ -26,7 +26,7 @@ return [
 
     'models' => [
         'image' => env('GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image'),
-        'text' => env('GEMINI_TEXT_MODEL', 'gemini-3.5-flash'),
+        'text' => env('GEMINI_TEXT_MODEL', 'gemini-3.8-flash'),
         'video' => env('GEMINI_VIDEO_MODEL', 'gemini-omni-1.1-flash'),
     ],
 
@@ -85,14 +85,21 @@ return [
     | Queue
     |--------------------------------------------------------------------------
     |
-    | Where queued generations run. Make sure the connection's retry_after is
-    | longer than the job timeout (300 seconds for images, 900 for videos).
+    | Where queued generations run. Job timeouts are worked out from the HTTP
+    | timeout, retries and video polling above, so a job is never killed
+    | while the client is still retrying. Set a timeout here (in seconds) to
+    | override that. Make sure the connection's retry_after is longer than
+    | the job timeout, or the job may run twice.
     |
     */
 
     'queue' => [
         'connection' => env('GEMINI_QUEUE_CONNECTION'),
         'name' => env('GEMINI_QUEUE'),
+        'timeout' => [
+            'image' => env('GEMINI_IMAGE_JOB_TIMEOUT'),
+            'video' => env('GEMINI_VIDEO_JOB_TIMEOUT'),
+        ],
     ],
 
     /*
@@ -101,9 +108,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | USD per 1 million tokens, used by $response->cost(). Standard paid tier
-    | prices from https://ai.google.dev/gemini-api/docs/pricing (October 2026).
+    | prices from https://ai.google.dev/gemini-api/docs/pricing (November 2026).
     | Prices change, so publish this config and keep it up to date. Pro
     | models cost more above 200k prompt tokens; these are the lower prices.
+    | Google doubles the 3.6 and 3.8 Flash prices on January 1, 2027.
     |
     */
 
@@ -117,6 +125,7 @@ return [
         // Text models
         'gemini-3.8-flash' => ['input' => 0.75, 'output' => 3.75],
         'gemini-3.6-flash' => ['input' => 0.75, 'output' => 3.75],
+        'gemini-3.5-flash' => ['input' => 1.50, 'output' => 9.00],
         'gemini-3.5-flash-lite' => ['input' => 0.30, 'output' => 2.50],
         'gemini-3.1-pro-preview' => ['input' => 2.00, 'output' => 12.00],
         'gemini-3.1-flash-lite' => ['input' => 0.25, 'output' => 1.50],
